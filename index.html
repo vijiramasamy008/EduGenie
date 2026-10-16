@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduGenie - AI Learning Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+    <main class="container">
+        <section class="hero">
+            <p class="badge">AI-POWERED LEARNING ASSISTANT</p>
+            <h1>EduGenie</h1>
+            <p class="subtitle">
+                Ask questions, understand concepts, generate quizzes,
+                summarize notes, and build a learning path.
+            </p>
+        </section>
+
+        <section class="card">
+            <form id="eduForm">
+                <label for="task">Choose a task</label>
+                <select id="task">
+                    <option value="qa">Ask a Question</option>
+                    <option value="explain">Explain a Topic</option>
+                    <option value="quiz">Generate Quiz</option>
+                    <option value="summarize">Summarize</option>
+                    <option value="learn">Learning Path</option>
+                </select>
+
+                <div id="levelWrap" class="hidden">
+                    <label for="level">Learning level</label>
+                    <select id="level">
+                        <option>Beginner</option>
+                        <option>Intermediate</option>
+                        <option>Advanced</option>
+                    </select>
+                </div>
+
+                <label for="inputText" id="inputLabel">Your question</label>
+                <textarea id="inputText" rows="8"
+                    placeholder="Type your question here..."></textarea>
+
+                <div class="actions">
+                    <button type="submit" id="submitBtn">Generate</button>
+                    <button type="button" class="secondary" id="clearBtn">Clear</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card result-card">
+            <div class="result-heading">
+                <h2>Result</h2>
+                <span id="status"></span>
+            </div>
+            <div id="result" class="result empty">
+                Your AI-generated result will appear here.
+            </div>
+        </section>
+
+        <footer>
+            <p>EduGenie • FastAPI + Google Gemini • Educational use</p>
+        </footer>
+    </main>
+
+    <script>
+        const form = document.getElementById("eduForm");
+        const task = document.getElementById("task");
+        const inputText = document.getElementById("inputText");
+        const inputLabel = document.getElementById("inputLabel");
+        const levelWrap = document.getElementById("levelWrap");
+        const level = document.getElementById("level");
+        const result = document.getElementById("result");
+        const status = document.getElementById("status");
+        const submitBtn = document.getElementById("submitBtn");
+        const clearBtn = document.getElementById("clearBtn");
+
+        const labels = {
+            qa: ["Your question", "Ask something like: What is photosynthesis?"],
+            explain: ["Topic to explain", "Example: Explain the Pythagoras theorem"],
+            quiz: ["Topic or passage", "Paste notes or a passage to turn into MCQs"],
+            summarize: ["Text to summarize", "Paste your study material here"],
+            learn: ["Topic to learn", "Example: Python programming"]
+        };
+
+        task.addEventListener("change", updateForm);
+
+        function updateForm() {
+            const value = task.value;
+            inputLabel.textContent = labels[value][0];
+            inputText.placeholder = labels[value][1];
+            levelWrap.classList.toggle("hidden", value !== "learn");
+        }
+
+        clearBtn.addEventListener("click", () => {
+            inputText.value = "";
+            result.textContent = "Your AI-generated result will appear here.";
+            result.className = "result empty";
+            status.textContent = "";
+        });
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const text = inputText.value.trim();
+            if (!text) {
+                showError("Please enter a question, topic, or passage.");
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Thinking...";
+            status.textContent = "Generating...";
+            result.className = "result loading";
+            result.textContent = "EduGenie is preparing your answer...";
+
+            const endpointMap = {
+                qa: "/qa",
+                explain: "/explain",
+                quiz: "/quiz",
+                summarize: "/summarize",
+                learn: "/learn/recommendations"
+            };
+
+            const body = task.value === "learn"
+                ? { topic: text, level: level.value }
+                : { text };
+
+            try {
+                const response = await fetch(endpointMap[task.value], {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || "Something went wrong.");
+                }
+
+                renderResult(task.value, data);
+                status.textContent = "Done";
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Generate";
+            }
+        });
+
+        function renderResult(type, data) {
+            result.className = "result";
+            result.innerHTML = "";
+
+            if (type === "quiz") {
+                renderQuiz(data.quiz);
+                return;
+            }
+
+            const text = type === "qa"
+                ? data.answer
+                : type === "explain"
+                ? data.explanation
+                : type === "summarize"
+                ? data.summary
+                : data.learning_path;
+
+            result.textContent = text;
+        }
+
+        function renderQuiz(questions) {
+            questions.forEach((item, index) => {
+                const box = document.createElement("div");
+                box.className = "quiz-question";
+
+                const title = document.createElement("h3");
+                title.textContent = `${index + 1}. ${item.question}`;
+                box.appendChild(title);
+
+                item.options.forEach(option => {
+                    const label = document.createElement("label");
+                    label.className = "option";
+
+                    const radio = document.createElement("input");
+                    radio.type = "radio";
+                    radio.name = `q${index}`;
+                    radio.value = option;
+
+                    radio.addEventListener("change", () => {
+                        if (option === item.answer) {
+                            label.classList.add("correct");
+                            feedback.textContent = "Correct!";
+                        } else {
+                            label.classList.add("wrong");
+                            feedback.textContent = `Not quite. Correct answer: ${item.answer}`;
+                        }
+                    });
+
+                    label.appendChild(radio);
+                    label.appendChild(document.createTextNode(option));
+                    box.appendChild(label);
+                });
+
+                const feedback = document.createElement("p");
+                feedback.className = "feedback";
+                box.appendChild(feedback);
+
+                const explanation = document.createElement("p");
+                explanation.className = "explanation";
+                explanation.textContent = item.explanation;
+                box.appendChild(explanation);
+
+                result.appendChild(box);
+            });
+        }
+
+        function showError(message) {
+            status.textContent = "Error";
+            result.className = "result error";
+            result.textContent = message;
+        }
+
+        updateForm();
+    </script>
+</body>
+</html>
